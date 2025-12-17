@@ -42,6 +42,11 @@ The system is designed keeping **system design and interview standards** in mind
 
 ---
 
+### Deplopment
+
+## Backend
+    https://ai-powered-chatapp-backend-jgjp.onrender.com
+
 ## ✨ Features
 
 ### 💬 Real-Time Chat
