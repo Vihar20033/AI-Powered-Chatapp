@@ -211,22 +211,6 @@ flowchart TD
 
 ---
 
-## 🧠 Interview-Ready Explanation
-
-> This project uses Socket.IO for real-time communication, Redis for caching authenticated sessions, MongoDB for persistence, and Google Gemini AI for intelligent responses. JWT authentication is applied to both HTTP and WebSocket connections, making the system secure, scalable, and production-ready.
-
----
-
-## 🚀 Future Enhancements
-
-* Redis Pub/Sub for horizontal scaling
-* Typing indicators and read receipts
-* Rate limiting using Redis
-* Docker & Nginx deployment
-* Message persistence optimization
-
----
-
 ## 👨‍💻 Author
 
 **Vihar Chudasama**
