@@ -19,7 +19,13 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Allows frontend (like React at http://localhost:3000) to access backend (like http://localhost:5000)
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:5173", // frontend URL
+    credentials: true,
+  })
+);
+
 
 
 import userRoutes from './routes/user.routes.js';

@@ -1,4 +1,4 @@
-import * as ai from "../services/gemini.services.js";
+import * as ai from "../services/prompt.services.js";
 
 export const getResult = async (req, res) => {
   console.log("🎯 getResult hit. Body received:", req.body);

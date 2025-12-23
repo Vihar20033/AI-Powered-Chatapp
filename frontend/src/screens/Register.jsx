@@ -35,7 +35,7 @@ const Register = () => {
     if (!validate()) return
     setLoading(true)
 
-    axios.post('/register', { email, password })
+    axios.post("/api/v1/register", { email, password })
       .then(res => {
         console.log(res.data)
 

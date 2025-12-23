@@ -1,17 +1,23 @@
 import { useState, useEffect, useRef, useContext } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import axios from "../config/axios";
 import { io } from "socket.io-client";
 import { UserContext } from "../context/UserContext";
 import Markdown from "markdown-to-jsx";
 
-const SOCKET_URL = import.meta.env.REACT_APP_SOCKET_URL || "http://localhost:8000";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:8000";
 
 const Project = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const projectId = location?.state?.projectId;
   const { user } = useContext(UserContext);
 
+  // Connection states
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
+
+  // UI states
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
@@ -22,12 +28,14 @@ const Project = () => {
   const [messages, setMessages] = useState([]);
   const [project, setProject] = useState(location.state?.project ?? null);
   const [isAITyping, setIsAITyping] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // File tree and code editor states
   const [fileTree, setFileTree] = useState({});
   const [selectedFile, setSelectedFile] = useState(null);
   const [currentCode, setCurrentCode] = useState("");
   const [isParsingCode, setIsParsingCode] = useState(false);
+  const [codeStats, setCodeStats] = useState({ files: 0, lines: 0, chars: 0 });
 
   const socketRef = useRef(null);
   const messageBoxRef = useRef(null);
@@ -51,19 +59,21 @@ const Project = () => {
 
       for (const pattern of patterns) {
         const matches = [...aiMessage.matchAll(pattern)];
-        
+
         matches.forEach((match) => {
           let filename, code, language;
 
           if (match.length === 3) {
-            if (match[1].includes('.')) {
+            if (match[1].includes(".")) {
               filename = match[1];
               code = match[2];
-              language = filename.split('.').pop();
+              language = filename.split(".").pop();
             } else {
               language = match[1];
               code = match[2];
-              filename = `file${autoFileCounter}.${getExtensionFromLanguage(language)}`;
+              filename = `file${autoFileCounter}.${getExtensionFromLanguage(
+                language
+              )}`;
               autoFileCounter++;
             }
           } else if (match.length === 4) {
@@ -74,13 +84,13 @@ const Project = () => {
 
           if (filename && code) {
             console.log(`✅ EXTRACTED FILE: ${filename} (${language})`);
-            
+
             newFileTree[filename] = {
               content: code.trim(),
-              language: language || filename.split('.').pop(),
+              language: language || filename.split(".").pop(),
               createdAt: new Date().toISOString(),
             };
-            
+
             filesFound++;
           }
         });
@@ -94,15 +104,15 @@ const Project = () => {
 
       console.log(`🎉 SUCCESSFULLY PARSED ${filesFound} FILES`);
       setFileTree(newFileTree);
-      
-      const newFiles = Object.keys(newFileTree).filter(f => !fileTree[f]);
+      updateCodeStats(newFileTree);
+
+      const newFiles = Object.keys(newFileTree).filter((f) => !fileTree[f]);
       if (newFiles.length > 0 && !selectedFile) {
         const firstNewFile = newFiles[0];
         setSelectedFile(firstNewFile);
         setCurrentCode(newFileTree[firstNewFile].content);
         console.log(`📂 AUTO-SELECTED: ${firstNewFile}`);
       }
-
     } catch (error) {
       console.error("❌ PARSING ERROR:", error);
     } finally {
@@ -110,24 +120,70 @@ const Project = () => {
     }
   };
 
+  // Update code statistics
+  const updateCodeStats = (tree) => {
+    const files = Object.keys(tree).length;
+    const lines = Object.values(tree).reduce(
+      (sum, file) => sum + (file.content?.split("\n").length || 0),
+      0
+    );
+    const chars = Object.values(tree).reduce(
+      (sum, file) => sum + (file.content?.length || 0),
+      0
+    );
+    setCodeStats({ files, lines, chars });
+  };
+
   const getExtensionFromLanguage = (lang) => {
     const extensionMap = {
-      javascript: 'js', js: 'js', typescript: 'ts', ts: 'ts',
-      python: 'py', py: 'py', java: 'java', c: 'c', cpp: 'cpp',
-      'c++': 'cpp', csharp: 'cs', 'c#': 'cs', go: 'go', rust: 'rs',
-      ruby: 'rb', php: 'php', html: 'html', css: 'css', scss: 'scss',
-      sass: 'sass', json: 'json', xml: 'xml', yaml: 'yaml', yml: 'yml',
-      markdown: 'md', md: 'md', sql: 'sql', bash: 'sh', sh: 'sh',
-      shell: 'sh', dockerfile: 'dockerfile', docker: 'dockerfile',
-      jsx: 'jsx', tsx: 'tsx', vue: 'vue', svelte: 'svelte',
+      javascript: "js",
+      js: "js",
+      typescript: "ts",
+      ts: "ts",
+      python: "py",
+      py: "py",
+      java: "java",
+      c: "c",
+      cpp: "cpp",
+      "c++": "cpp",
+      csharp: "cs",
+      "c#": "cs",
+      go: "go",
+      rust: "rs",
+      ruby: "rb",
+      php: "php",
+      html: "html",
+      css: "css",
+      scss: "scss",
+      sass: "sass",
+      json: "json",
+      xml: "xml",
+      yaml: "yaml",
+      yml: "yml",
+      markdown: "md",
+      md: "md",
+      sql: "sql",
+      bash: "sh",
+      sh: "sh",
+      shell: "sh",
+      dockerfile: "dockerfile",
+      docker: "dockerfile",
+      jsx: "jsx",
+      tsx: "tsx",
+      vue: "vue",
+      svelte: "svelte",
     };
-    
-    return extensionMap[lang.toLowerCase()] || 'txt';
+
+    return extensionMap[lang.toLowerCase()] || "txt";
   };
 
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage && (lastMessage.senderId === 'ai' || lastMessage.senderEmail === 'AI Assistant')) {
+    if (
+      lastMessage &&
+      (lastMessage.senderId === "ai" ||
+        lastMessage.senderEmail === "AI Assistant")
+    ) {
       console.log("🤖 NEW AI MESSAGE DETECTED - PARSING...");
       parseAIResponse(lastMessage.message);
     }
@@ -142,37 +198,45 @@ const Project = () => {
   const handleCodeChange = (newCode) => {
     setCurrentCode(newCode);
     if (selectedFile) {
-      setFileTree(prev => ({
-        ...prev,
-        [selectedFile]: {
-          ...prev[selectedFile],
-          content: newCode,
-          updatedAt: new Date().toISOString(),
-        }
-      }));
+      setFileTree((prev) => {
+        const updated = {
+          ...prev,
+          [selectedFile]: {
+            ...prev[selectedFile],
+            content: newCode,
+            updatedAt: new Date().toISOString(),
+          },
+        };
+        updateCodeStats(updated);
+        return updated;
+      });
     }
   };
 
   const downloadFile = (filename) => {
     if (!fileTree[filename]) return;
-    
+
     const content = fileTree[filename].content;
-    const blob = new Blob([content], { type: 'text/plain' });
+    const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     console.log("⬇️ Downloaded:", filename);
   };
 
   const downloadAllFiles = () => {
+    if (Object.keys(fileTree).length === 0) {
+      alert("No files to download");
+      return;
+    }
     Object.keys(fileTree).forEach((filename, index) => {
-      setTimeout(() => downloadFile(filename), index * 100);
+      setTimeout(() => downloadFile(filename), index * 200);
     });
   };
 
@@ -180,7 +244,8 @@ const Project = () => {
     const newFileTree = { ...fileTree };
     delete newFileTree[filename];
     setFileTree(newFileTree);
-    
+    updateCodeStats(newFileTree);
+
     if (selectedFile === filename) {
       const remainingFiles = Object.keys(newFileTree);
       if (remainingFiles.length > 0) {
@@ -195,31 +260,62 @@ const Project = () => {
   const copyToClipboard = (code) => {
     navigator.clipboard.writeText(code).then(() => {
       console.log("📋 Copied to clipboard");
+      // Optional: Show toast notification
     });
   };
 
   const clearAllFiles = () => {
-    if (confirm('Are you sure you want to delete all files?')) {
+    if (confirm("Are you sure you want to delete all files? This action cannot be undone.")) {
       setFileTree({});
       setSelectedFile(null);
       setCurrentCode("");
+      setCodeStats({ files: 0, lines: 0, chars: 0 });
     }
   };
 
-  const addCollaborators = () => {
-    if (!projectId || selectedUserIds.length === 0) return;
-    axios.put("/projects/add-user", { projectId, users: selectedUserIds })
-      .then((res) => {
-        setProjectUsers(res.data.project.users || []);
-        setSelectedUserIds([]);
-        closeUserModal();
-      })
-      .catch((err) => console.error("❌ ERROR:", err));
+  const addCollaborators = async () => {
+    if (!projectId || selectedUserIds.length === 0) {
+      alert("Please select users to add");
+      return;
+    }
+    try {
+      const res = await axios.put("/api/v1/projects/add-user", {
+        projectId,
+        users: selectedUserIds,
+      });
+      setProjectUsers(res.data.project.users || []);
+      setSelectedUserIds([]);
+      closeUserModal();
+      console.log("✅ Collaborators added successfully");
+    } catch (err) {
+      console.error("❌ ERROR:", err);
+      alert("Failed to add collaborators");
+    }
+  };
+
+  const removeCollaborator = async (userId) => {
+    if (!projectId) return;
+    try {
+      const res = await axios.put("/api/v1/projects/remove-user", {
+        projectId,
+        userId,
+      });
+      setProjectUsers(res.data.project.users || []);
+      console.log("✅ Collaborator removed successfully");
+    } catch (err) {
+      console.error("❌ ERROR:", err);
+      alert("Failed to remove collaborator");
+    }
   };
 
   function send() {
     if (!user || (!user._id && !user.id)) {
       alert("Please log in again.");
+      return;
+    }
+
+    if (!isConnected) {
+      alert("Disconnected from server. Reconnecting...");
       return;
     }
 
@@ -241,14 +337,15 @@ const Project = () => {
       senderName: user.name ?? user.email,
       timestamp: new Date().toISOString(),
       isPrivate: !!(activeUserId && activeUserId !== senderId),
-      receiverId: activeUserId && activeUserId !== senderId ? String(activeUserId) : null,
+      receiverId:
+        activeUserId && activeUserId !== senderId ? String(activeUserId) : null,
     };
 
     if (payload.isPrivate) {
       socketRef.current.emit("private-message", payload);
     } else {
       socketRef.current.emit("project-message", payload);
-      
+
       if (trimmed.toLowerCase().includes("@ai")) {
         setIsAITyping(true);
       }
@@ -277,15 +374,22 @@ const Project = () => {
   };
 
   useEffect(() => {
-    if (!projectId || !user) return;
+    if (!projectId || !user) {
+      setLoading(false);
+      return;
+    }
 
     const uid = user._id ?? user.id;
     const token = user.token || localStorage.getItem("token");
 
     if (!token) {
-      alert("Authentication token missing.");
+      alert("Authentication token missing. Please log in again.");
+      navigate("/login");
       return;
     }
+
+    setLoading(true);
+    setConnectionError(null);
 
     const socket = io(SOCKET_URL, {
       auth: { token: token },
@@ -299,10 +403,26 @@ const Project = () => {
 
     socketRef.current = socket;
 
+    // Connection event handlers
     socket.on("connect", () => {
+      console.log("✅ Connected to server");
+      setIsConnected(true);
+      setConnectionError(null);
       socket.emit("join-project", { projectId, userId: uid });
     });
 
+    socket.on("disconnect", () => {
+      console.log("❌ Disconnected from server");
+      setIsConnected(false);
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("❌ Connection error:", error.message);
+      setConnectionError(error.message);
+      setIsConnected(false);
+    });
+
+    // Message event handlers
     socket.on("project-message", (data) => {
       if (data.senderId === "ai" || data.senderEmail === "AI Assistant") {
         setIsAITyping(false);
@@ -317,18 +437,63 @@ const Project = () => {
       });
     });
 
-    axios.get("/get-all-users")
-      .then((res) => setUsers(res.data.users || []))
-      .catch((err) => console.error(err));
+    socket.on("private-message", (data) => {
+      const senderId = String(data.senderId);
+      const receiverId = String(data.receiverId ?? "");
+      const currentId = String(uid);
 
-    axios.get(`projects/get-project/${projectId}`)
-      .then((res) => {
-        setProject(res.data.project);
-        setProjectUsers(res.data.project?.users ?? []);
-      })
-      .catch((err) => console.error(err));
+      if (senderId !== currentId && receiverId !== currentId) return;
 
+      setMessages((prev) => {
+        const isDuplicate = prev.some((m) => m.id === data.id);
+        if (isDuplicate) return prev;
+        return [...prev, { ...data, outgoing: senderId === currentId }];
+      });
+    });
+
+    socket.on("load-messages", (msgs) => {
+      const processedMessages = msgs
+        .map((m) => {
+          try {
+            return typeof m === "string" ? JSON.parse(m) : m;
+          } catch {
+            return m;
+          }
+        })
+        .reverse();
+      setMessages(processedMessages || []);
+      setLoading(false);
+    });
+
+    socket.on("ai-typing", () => setIsAITyping(true));
+    socket.on("ai-done", () => setIsAITyping(false));
+
+    // Fetch project data
+    const fetchProjectData = async () => {
+      try {
+        const [usersRes, projectRes] = await Promise.all([
+          axios.get("/api/v1/get-all-users"),
+          axios.get(`/api/v1/projects/get-project/${projectId}`),
+        ]);
+        
+        setUsers(usersRes.data.users || []);
+        setProject(projectRes.data.project);
+        setProjectUsers(projectRes.data.project?.users ?? []);
+      } catch (err) {
+        console.error("❌ Error fetching project data:", err);
+        setConnectionError("Failed to load project data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProjectData();
+
+    // Cleanup function
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
       try {
         socket.emit("leave-project", { projectId, userId: uid });
         socket.disconnect();
@@ -336,7 +501,7 @@ const Project = () => {
         console.error(e);
       }
     };
-  }, [projectId, user]);
+  }, [projectId, user, navigate]);
 
   useEffect(() => {
     const box = messageBoxRef.current;
@@ -347,122 +512,194 @@ const Project = () => {
   const renderMessage = (m) => {
     const currentId = String(user?._id ?? user?.id ?? "");
     const isOutgoing = String(m.senderId) === currentId;
-    const isAI = String(m.senderId) === "ai" || m.senderEmail === "AI Assistant";
+    const isAI =
+      String(m.senderId) === "ai" || m.senderEmail === "AI Assistant";
+    const isPrivate = m.isPrivate;
 
     return (
       <div
         key={m.id ?? `${m.timestamp}-${Math.random()}`}
         className={`message flex flex-col ${
-          isAI ? "self-center w-full max-w-[85%]" :
-          isOutgoing ? "self-end items-end max-w-[75%]" :
-          "self-start items-start max-w-[75%]"
+          isAI
+            ? "self-center w-full max-w-[85%]"
+            : isOutgoing
+            ? "self-end items-end max-w-[75%]"
+            : "self-start items-start max-w-[75%]"
         }`}
       >
-        <div className={`flex items-center gap-2 mb-1 ${isOutgoing ? "flex-row-reverse" : "flex-row"}`}>
+        <div
+          className={`flex items-center gap-2 mb-1 ${
+            isOutgoing ? "flex-row-reverse" : "flex-row"
+          }`}
+        >
           {isAI ? (
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center">
                 <i className="ri-robot-line text-white text-xs" />
               </div>
-              <small className="text-xs font-medium text-purple-400">AI Assistant</small>
+              <small className="text-xs font-medium text-purple-400">
+                AI Assistant
+              </small>
             </div>
           ) : (
             <>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                isOutgoing ? "bg-blue-600" : "bg-gray-600"
-              }`}>
+              <div
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+                  isOutgoing ? "bg-blue-600" : "bg-gray-600"
+                }`}
+              >
                 {(m.senderName?.[0] || m.senderEmail?.[0] || "?").toUpperCase()}
               </div>
               <small className="text-xs text-gray-400">
                 {m.senderName ?? m.senderEmail ?? "Unknown"}
               </small>
+              {isPrivate && (
+                <small className="text-xs text-yellow-400 ml-2">
+                  <i className="ri-lock-line" /> Private
+                </small>
+              )}
             </>
           )}
         </div>
 
-        <div className={`px-4 py-3 rounded-2xl shadow-sm ${
-          isAI ? "bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 text-gray-100 overflow-auto" :
-          isOutgoing ? "bg-blue-600 text-white rounded-br-sm" :
-          "bg-gray-700 text-gray-100 rounded-bl-sm"
-        }`}>
+        <div
+          className={`px-4 py-3 rounded-2xl shadow-sm ${
+            isAI
+              ? "bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 text-gray-100 overflow-auto"
+              : isOutgoing
+              ? "bg-blue-600 text-white rounded-br-sm"
+              : "bg-gray-700 text-gray-100 rounded-bl-sm"
+          }`}
+        >
           <Markdown className="text-sm leading-relaxed whitespace-pre-wrap break-words">
             {m.message}
           </Markdown>
         </div>
 
-        <small className={`text-[10px] text-gray-500 mt-1 ${isOutgoing ? "text-right" : "text-left"}`}>
-          {new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        <small
+          className={`text-[10px] text-gray-500 mt-1 ${
+            isOutgoing ? "text-right" : "text-left"
+          }`}
+        >
+          {new Date(m.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </small>
       </div>
     );
   };
 
   const getFileIcon = (filename) => {
-    const ext = filename.split('.').pop().toLowerCase();
+    const ext = filename.split(".").pop().toLowerCase();
     const iconMap = {
-      js: 'ri-javascript-line text-yellow-400',
-      jsx: 'ri-reactjs-line text-blue-400',
-      ts: 'ri-file-code-line text-blue-500',
-      tsx: 'ri-reactjs-line text-blue-500',
-      py: 'ri-file-code-line text-blue-400',
-      java: 'ri-file-code-line text-red-400',
-      c: 'ri-file-code-line text-blue-600',
-      cpp: 'ri-file-code-line text-blue-600',
-      cs: 'ri-file-code-line text-purple-500',
-      go: 'ri-file-code-line text-cyan-400',
-      rs: 'ri-file-code-line text-orange-600',
-      html: 'ri-html5-line text-orange-500',
-      css: 'ri-css3-line text-blue-400',
-      scss: 'ri-css3-line text-pink-400',
-      json: 'ri-braces-line text-green-400',
-      md: 'ri-markdown-line text-gray-400',
-      txt: 'ri-file-text-line text-gray-400',
-      sh: 'ri-terminal-line text-green-500',
-      sql: 'ri-database-2-line text-blue-500',
-      xml: 'ri-file-code-line text-orange-400',
-      yaml: 'ri-file-code-line text-purple-400',
-      yml: 'ri-file-code-line text-purple-400',
+      js: "ri-javascript-line text-yellow-400",
+      jsx: "ri-reactjs-line text-blue-400",
+      ts: "ri-file-code-line text-blue-500",
+      tsx: "ri-reactjs-line text-blue-500",
+      py: "ri-file-code-line text-blue-400",
+      java: "ri-file-code-line text-red-400",
+      c: "ri-file-code-line text-blue-600",
+      cpp: "ri-file-code-line text-blue-600",
+      cs: "ri-file-code-line text-purple-500",
+      go: "ri-file-code-line text-cyan-400",
+      rs: "ri-file-code-line text-orange-600",
+      html: "ri-html5-line text-orange-500",
+      css: "ri-css3-line text-blue-400",
+      scss: "ri-css3-line text-pink-400",
+      json: "ri-braces-line text-green-400",
+      md: "ri-markdown-line text-gray-400",
+      txt: "ri-file-text-line text-gray-400",
+      sh: "ri-terminal-line text-green-500",
+      sql: "ri-database-2-line text-blue-500",
+      xml: "ri-file-code-line text-orange-400",
+      yaml: "ri-file-code-line text-purple-400",
+      yml: "ri-file-code-line text-purple-400",
     };
-    
-    return iconMap[ext] || 'ri-file-code-line text-gray-400';
+
+    return iconMap[ext] || "ri-file-code-line text-gray-400";
   };
 
   return (
-    <main className="h-screen w-screen flex bg-gray-900 p-4 gap-4">
+    <main className="h-screen w-screen flex bg-gray-900 p-4 gap-4 overflow-hidden">
+      {/* Loading Screen */}
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/50 z-50">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-purple-600 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-white font-medium">Loading project...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Connection Error Banner */}
+      {connectionError && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 z-40">
+          <i className="ri-alert-line text-lg" />
+          <span className="text-sm">{connectionError}</span>
+          <button
+            onClick={() => setConnectionError(null)}
+            className="ml-4 text-white hover:text-gray-200"
+          >
+            <i className="ri-close-line" />
+          </button>
+        </div>
+      )}
+
       {/* LEFT: CHAT SECTION */}
       <section className="flex flex-col relative w-full md:w-96 bg-gray-800 rounded-2xl shadow-lg overflow-hidden">
+        {/* Header with connection status */}
         <header className="flex justify-between items-center px-4 py-3 bg-gray-700 border-b border-gray-600">
-          <button onClick={openUserModal} className="flex items-center gap-3 p-1 rounded-md hover:bg-gray-600 transition">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-700">
+          <button
+            onClick={openUserModal}
+            className="flex items-center gap-3 p-1 rounded-md hover:bg-gray-600 transition flex-1"
+          >
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-700 relative">
               <i className="ri-user-3-fill text-white text-lg" />
+              {isConnected && (
+                <div className="w-3 h-3 bg-green-500 rounded-full absolute bottom-0 right-0 border border-gray-700" />
+              )}
             </div>
-            <div className="flex flex-col text-left">
+            <div className="flex flex-col text-left flex-1">
               <span className="text-sm font-medium text-white">Chat Room</span>
-              <small className="text-xs text-gray-300">{projectUsers.length} members</small>
+              <small className="text-xs text-gray-300">
+                {isConnected ? "Connected" : "Disconnected"} • {projectUsers.length} members
+              </small>
             </div>
           </button>
-          <button className="text-white text-2xl hover:text-gray-300" onClick={() => setIsSidePanelOpen(true)}>
+          <button
+            className="text-white text-2xl hover:text-gray-300 transition"
+            onClick={() => setIsSidePanelOpen(true)}
+          >
             <i className="ri-group-fill" />
           </button>
         </header>
 
-        <div ref={messageBoxRef} className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+        {/* Messages Container */}
+        <div
+          ref={messageBoxRef}
+          className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+        >
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
               <i className="ri-chat-3-line text-5xl opacity-30" />
               <p className="text-sm">No messages yet</p>
               <p className="text-xs opacity-70">Type @ai to generate code</p>
+              <p className="text-xs opacity-70">Type to chat with collaborators</p>
             </div>
           ) : (
             <>
-              {messages.filter((m) => {
-                if (!m) return false;
-                if (!m.isPrivate) return String(m.projectId) === String(projectId);
-                const currentId = String(user?._id ?? user?.id ?? "");
-                const senderId = String(m.senderId ?? "");
-                const receiverId = String(m.receiverId ?? "");
-                return senderId === currentId || receiverId === currentId;
-              }).map((m) => renderMessage(m))}
+              {messages
+                .filter((m) => {
+                  if (!m) return false;
+                  if (!m.isPrivate)
+                    return String(m.projectId) === String(projectId);
+                  const currentId = String(user?._id ?? user?.id ?? "");
+                  const senderId = String(m.senderId ?? "");
+                  const receiverId = String(m.receiverId ?? "");
+                  return senderId === currentId || receiverId === currentId;
+                })
+                .map((m) => renderMessage(m))}
 
               {isAITyping && (
                 <div className="flex items-center gap-2 self-center">
@@ -470,9 +707,18 @@ const Project = () => {
                     <i className="ri-robot-line text-white text-xs animate-pulse" />
                   </div>
                   <div className="flex gap-1 bg-gray-700 px-4 py-3 rounded-2xl">
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <span
+                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "0ms" }}
+                    />
+                    <span
+                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "150ms" }}
+                    />
+                    <span
+                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "300ms" }}
+                    />
                   </div>
                 </div>
               )}
@@ -480,12 +726,25 @@ const Project = () => {
           )}
         </div>
 
-        <div className="flex items-center p-3 border-t border-gray-600 bg-gray-900">
+        {/* Message Input */}
+        <div className="flex items-center p-3 border-t border-gray-600 bg-gray-900 gap-2">
+          {activeUserId && (
+            <div className="px-3 py-1 bg-yellow-600/20 border border-yellow-600/50 rounded-full flex items-center gap-2">
+              <i className="ri-lock-line text-yellow-400 text-xs" />
+              <small className="text-xs text-yellow-300">Private Chat</small>
+              <button
+                onClick={() => setActiveUserId(null)}
+                className="ml-1 text-yellow-400 hover:text-yellow-300"
+              >
+                <i className="ri-close-line text-xs" />
+              </button>
+            </div>
+          )}
           <input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             type="text"
-            placeholder="Type @ai to generate code..."
+            placeholder={activeUserId ? "Send private message..." : "Type @ai to generate code..."}
             className="flex-1 px-4 py-2 rounded-full bg-gray-800 text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -493,53 +752,99 @@ const Project = () => {
                 send();
               }
             }}
+            disabled={!isConnected}
           />
           <button
             onClick={send}
-            disabled={!message.trim()}
-            className="ml-2 p-2 bg-blue-600 rounded-full hover:bg-blue-700 transition disabled:opacity-50"
+            disabled={!message.trim() || !isConnected}
+            className="p-2 bg-blue-600 rounded-full hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <i className="ri-send-plane-fill text-white text-xl" />
           </button>
         </div>
 
-        {/* Collaborators Panel */}
-        <div className={`absolute top-0 left-0 h-full w-72 bg-gray-700 shadow-xl transition-transform duration-300 z-10 ${
-          isSidePanelOpen ? "translate-x-0" : "-translate-x-full"
-        }`}>
+        {/* Collaborators Sidebar Panel */}
+        <div
+          className={`absolute top-0 left-0 h-full w-72 bg-gray-700 shadow-xl transition-transform duration-300 z-10 ${
+            isSidePanelOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
           <header className="flex justify-between items-center px-4 py-3 bg-gray-600 border-b border-gray-500">
             <h1 className="font-semibold text-lg text-white">Collaborators</h1>
-            <button onClick={() => setIsSidePanelOpen(false)} className="p-2 text-gray-200 hover:text-white">
+            <button
+              onClick={() => setIsSidePanelOpen(false)}
+              className="p-2 text-gray-200 hover:text-white transition"
+            >
               <i className="ri-close-fill text-xl" />
             </button>
           </header>
-          <div className="p-4 space-y-3 overflow-y-auto h-full">
-            {projectUsers.map((u) => {
-              const uid = String(u?._id ?? u?.id ?? "");
-              return (
-                <div key={uid} className="flex items-center gap-3 p-3 rounded-xl bg-gray-600 hover:bg-gray-500 transition">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600">
-                    <i className="ri-user-3-fill text-white text-lg" />
+          <div className="p-4 space-y-3 overflow-y-auto h-[calc(100%-60px)]">
+            {projectUsers.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <i className="ri-user-search-line text-5xl opacity-30 mb-3 block" />
+                <p className="text-sm">No collaborators yet</p>
+              </div>
+            ) : (
+              projectUsers.map((u) => {
+                const uid = String(u?._id ?? u?.id ?? "");
+                const currentUid = String(user?._id ?? user?.id ?? "");
+                const isCurrentUser = uid === currentUid;
+
+                return (
+                  <div
+                    key={uid}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition cursor-pointer ${
+                      activeUserId === uid
+                        ? "bg-blue-600"
+                        : "bg-gray-600 hover:bg-gray-500"
+                    }`}
+                    onClick={() =>
+                      !isCurrentUser &&
+                      setActiveUserId((prev) => (prev === uid ? null : uid))
+                    }
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600">
+                      <i className="ri-user-3-fill text-white text-lg" />
+                    </div>
+                    <div className="flex-1">
+                      <h1 className="text-white font-medium text-sm">
+                        {u.name}
+                        {isCurrentUser && (
+                          <span className="text-xs text-gray-300 ml-2">
+                            (You)
+                          </span>
+                        )}
+                      </h1>
+                      <p className="text-xs text-gray-300">{u.email}</p>
+                    </div>
+                    {activeUserId === uid && !isCurrentUser && (
+                      <i className="ri-check-line text-white text-lg" />
+                    )}
                   </div>
-                  <div className="flex-1">
-                    <h1 className="text-white font-medium text-sm">{u.name}</h1>
-                    <p className="text-xs text-gray-300">{u.email}</p>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       </section>
 
       {/* RIGHT: CODE EDITOR SECTION */}
       <section className="flex-1 flex flex-col bg-gray-800 rounded-2xl shadow-lg overflow-hidden">
+        {/* Editor Header */}
         <header className="flex justify-between items-center px-4 py-3 bg-gray-700 border-b border-gray-600">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 flex-1">
             <i className="ri-code-s-slash-line text-purple-400 text-xl" />
-            <h2 className="text-white font-semibold">AI Code Generator</h2>
+            <div className="flex flex-col">
+              <h2 className="text-white font-semibold">AI Code Generator</h2>
+              {Object.keys(fileTree).length > 0 && (
+                <small className="text-xs text-gray-400">
+                  {codeStats.files} files • {codeStats.lines} lines •{" "}
+                  {(codeStats.chars / 1024).toFixed(2)} KB
+                </small>
+              )}
+            </div>
             {Object.keys(fileTree).length > 0 && (
-              <span className="ml-2 px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full">
+              <span className="ml-2 px-3 py-1 bg-purple-600 text-white text-xs rounded-full whitespace-nowrap">
                 {Object.keys(fileTree).length} files
               </span>
             )}
@@ -550,16 +855,18 @@ const Project = () => {
                 <button
                   onClick={downloadAllFiles}
                   className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm flex items-center gap-1 transition"
+                  title="Download all files"
                 >
                   <i className="ri-download-2-line" />
-                  Download All
+                  <span className="hidden sm:inline">All</span>
                 </button>
                 <button
                   onClick={clearAllFiles}
                   className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm flex items-center gap-1 transition"
+                  title="Clear all files"
                 >
                   <i className="ri-delete-bin-line" />
-                  Clear All
+                  <span className="hidden sm:inline">Clear</span>
                 </button>
               </>
             )}
@@ -568,61 +875,75 @@ const Project = () => {
 
         <div className="flex flex-1 overflow-hidden">
           {/* File Tree Sidebar */}
-          <div className="w-64 bg-gray-900 border-r border-gray-700 overflow-y-auto">
-            <div className="p-3 border-b border-gray-700 flex justify-between items-center">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase">Files</h3>
+          <div className="w-64 bg-gray-900 border-r border-gray-700 overflow-y-auto flex flex-col">
+            <div className="p-3 border-b border-gray-700 flex justify-between items-center sticky top-0 bg-gray-900">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase">
+                Files
+              </h3>
               {Object.keys(fileTree).length > 0 && (
-                <span className="text-xs text-purple-400">{Object.keys(fileTree).length}</span>
+                <span className="text-xs text-purple-400 font-medium">
+                  {Object.keys(fileTree).length}
+                </span>
               )}
             </div>
             {Object.keys(fileTree).length === 0 ? (
-              <div className="p-6 text-center">
-                <i className="ri-folder-open-line text-5xl text-gray-600 mb-3 block" />
-                <p className="text-sm text-gray-500 font-medium mb-1">No files yet</p>
-                <p className="text-xs text-gray-600">Ask AI to generate code</p>
-                <div className="mt-4 p-3 bg-gray-800 rounded-lg text-left">
-                  <p className="text-xs text-gray-400 mb-2">Try:</p>
-                  <p className="text-xs text-purple-400 font-mono">@ai create hello.js</p>
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+                <i className="ri-folder-open-line text-5xl text-gray-600 mb-3" />
+                <p className="text-sm text-gray-500 font-medium mb-1">
+                  No files yet
+                </p>
+                <p className="text-xs text-gray-600 mb-4">Ask AI to generate code</p>
+                <div className="p-3 bg-gray-800 rounded-lg text-left w-full">
+                  <p className="text-xs text-gray-400 mb-2 font-medium">Try:</p>
+                  <p className="text-xs text-purple-400 font-mono">
+                    @ai create hello.js
+                  </p>
                 </div>
               </div>
             ) : (
-              <div className="p-2 space-y-1">
-                {Object.keys(fileTree).sort().map((filename) => (
-                  <div
-                    key={filename}
-                    className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
-                      selectedFile === filename ? "bg-blue-600" : "hover:bg-gray-800"
-                    }`}
-                    onClick={() => handleFileSelect(filename)}
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <i className={`text-sm ${getFileIcon(filename)}`} />
-                      <span className="text-sm text-white truncate">{filename}</span>
+              <div className="p-2 space-y-1 flex-1 overflow-y-auto">
+                {Object.keys(fileTree)
+                  .sort()
+                  .map((filename) => (
+                    <div
+                      key={filename}
+                      className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer transition ${
+                        selectedFile === filename
+                          ? "bg-blue-600"
+                          : "hover:bg-gray-800"
+                      }`}
+                      onClick={() => handleFileSelect(filename)}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <i className={`text-sm ${getFileIcon(filename)}`} />
+                        <span className="text-sm text-white truncate">
+                          {filename}
+                        </span>
+                      </div>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            downloadFile(filename);
+                          }}
+                          className="p-1 hover:bg-gray-700 rounded transition"
+                          title="Download file"
+                        >
+                          <i className="ri-download-line text-xs text-gray-300" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteFile(filename);
+                          }}
+                          className="p-1 hover:bg-red-600 rounded transition"
+                          title="Delete file"
+                        >
+                          <i className="ri-delete-bin-line text-xs text-gray-300" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          downloadFile(filename);
-                        }}
-                        className="p-1 hover:bg-gray-700 rounded"
-                        title="Download"
-                      >
-                        <i className="ri-download-line text-xs text-gray-300" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteFile(filename);
-                        }}
-                        className="p-1 hover:bg-red-600 rounded"
-                        title="Delete"
-                      >
-                        <i className="ri-delete-bin-line text-xs text-gray-300" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </div>
@@ -634,22 +955,26 @@ const Project = () => {
                 <div className="flex justify-between items-center px-4 py-2 bg-gray-900 border-b border-gray-700">
                   <div className="flex items-center gap-2">
                     <i className={`text-sm ${getFileIcon(selectedFile)}`} />
-                    <span className="text-sm text-gray-300 font-medium">{selectedFile}</span>
+                    <span className="text-sm text-gray-300 font-medium">
+                      {selectedFile}
+                    </span>
                     <span className="text-xs text-gray-500">
-                      {currentCode.split('\n').length} lines
+                      {currentCode.split("\n").length} lines
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => copyToClipboard(currentCode)}
-                      className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs flex items-center gap-1"
+                      className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs flex items-center gap-1 transition"
+                      title="Copy to clipboard"
                     >
                       <i className="ri-file-copy-line" />
                       Copy
                     </button>
                     <button
                       onClick={() => downloadFile(selectedFile)}
-                      className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs flex items-center gap-1"
+                      className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs flex items-center gap-1 transition"
+                      title="Download file"
                     >
                       <i className="ri-download-line" />
                       Download
@@ -670,14 +995,16 @@ const Project = () => {
                 <div className="text-center">
                   <p className="text-lg font-medium mb-2">No file selected</p>
                   <p className="text-sm opacity-70 mb-4">
-                    {Object.keys(fileTree).length > 0 
-                      ? "Select a file from the sidebar to view and edit" 
+                    {Object.keys(fileTree).length > 0
+                      ? "Select a file from the sidebar to view and edit"
                       : "Ask AI to generate code to get started"}
                   </p>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 justify-center">
                     <div className="px-4 py-2 bg-gray-800 rounded-lg">
                       <p className="text-xs text-gray-400 mb-1">Example:</p>
-                      <p className="text-xs text-purple-400 font-mono">@ai create a React todo app</p>
+                      <p className="text-xs text-purple-400 font-mono">
+                        @ai create a React todo app
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -690,15 +1017,20 @@ const Project = () => {
       {/* User Modal */}
       {userModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-4">
+          <div className="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
             <header className="flex justify-between items-center px-6 py-4 bg-gray-700 border-b border-gray-600 rounded-t-2xl">
-              <h2 className="text-lg font-semibold text-white">Add Collaborators</h2>
-              <button onClick={closeUserModal} className="text-gray-300 hover:text-white transition">
+              <h2 className="text-lg font-semibold text-white">
+                Add Collaborators
+              </h2>
+              <button
+                onClick={closeUserModal}
+                className="text-gray-300 hover:text-white transition"
+              >
                 <i className="ri-close-fill text-2xl" />
               </button>
             </header>
-            
-            <div className="p-6 max-h-96 overflow-y-auto">
+
+            <div className="flex-1 p-6 overflow-y-auto">
               {users.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <i className="ri-user-search-line text-5xl opacity-30 mb-3 block" />
@@ -706,40 +1038,52 @@ const Project = () => {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {users.filter(u => {
-                    const uid = String(u?._id ?? u?.id ?? "");
-                    return !projectUsers.some(pu => String(pu?._id ?? pu?.id ?? "") === uid);
-                  }).map((u) => {
-                    const uid = String(u?._id ?? u?.id ?? "");
-                    const isSelected = selectedUserIds.map(String).includes(uid);
-                    
-                    return (
-                      <div
-                        key={uid}
-                        onClick={() => toggleSelectUser(uid)}
-                        className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
-                          isSelected ? "bg-blue-600" : "bg-gray-700 hover:bg-gray-600"
-                        }`}
-                      >
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          isSelected ? "bg-blue-700" : "bg-gray-600"
-                        }`}>
-                          <i className="ri-user-3-fill text-white text-lg" />
+                  {users
+                    .filter((u) => {
+                      const uid = String(u?._id ?? u?.id ?? "");
+                      return !projectUsers.some(
+                        (pu) => String(pu?._id ?? pu?.id ?? "") === uid
+                      );
+                    })
+                    .map((u) => {
+                      const uid = String(u?._id ?? u?.id ?? "");
+                      const isSelected = selectedUserIds
+                        .map(String)
+                        .includes(uid);
+
+                      return (
+                        <div
+                          key={uid}
+                          onClick={() => toggleSelectUser(uid)}
+                          className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${
+                            isSelected
+                              ? "bg-blue-600"
+                              : "bg-gray-700 hover:bg-gray-600"
+                          }`}
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                              isSelected ? "bg-blue-700" : "bg-gray-600"
+                            }`}
+                          >
+                            <i className="ri-user-3-fill text-white text-lg" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-white font-medium text-sm">
+                              {u.name}
+                            </h3>
+                            <p className="text-xs text-gray-300">{u.email}</p>
+                          </div>
+                          {isSelected && (
+                            <i className="ri-check-line text-white text-xl" />
+                          )}
                         </div>
-                        <div className="flex-1">
-                          <h3 className="text-white font-medium text-sm">{u.name}</h3>
-                          <p className="text-xs text-gray-300">{u.email}</p>
-                        </div>
-                        {isSelected && (
-                          <i className="ri-check-line text-white text-xl" />
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               )}
             </div>
-            
+
             <div className="px-6 py-4 bg-gray-700 border-t border-gray-600 rounded-b-2xl flex justify-between items-center">
               <p className="text-sm text-gray-300">
                 {selectedUserIds.length} selected

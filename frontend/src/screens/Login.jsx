@@ -17,7 +17,7 @@ const Login = () => {
     setApiError('') // ✅ Clear previous error
     setLoading(true)
 
-    axios.post('/login', { email, password })
+    axios.post('/api/v1/login', { email, password })
       .then(res => {
         console.log(res.data)
 
