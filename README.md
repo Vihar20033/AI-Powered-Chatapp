@@ -159,11 +159,11 @@ npm start
 flowchart TD
 
 %% ===== CLIENT LAYER =====
-A[React.js Client] -->|HTTP Axios REST| B[Node.js + Express API]
+A[React.js Client] -->|HTTP REST| B[Node.js + Express API]
 A -->|WebSocket| C[Socket.IO Client]
 
 %% ===== SOCKET + AUTH =====
-C -->|socket.connect| D[Socket.IO Server]
+C -->|socket.connect()| D[Socket.IO Server]
 D -->|JWT Verify| E[Socket Auth Middleware]
 
 %% ===== PROJECT & CHAT LOGIC =====
@@ -173,20 +173,20 @@ F -->|project-message| A
 F -->|private-message| A
 
 %% ===== DATABASE =====
-F -->|Save Messages & Projects| G[(MongoDB)]
+F -->|Save Projects & Messages| G[MongoDB]
 E -->|Load Project on First Access| G
 
 %% ===== REDIS CACHE =====
-F -->|Cache Messages (lpush/lrange)| H[(Redis)]
-E -->|Load Project Cache| H
-F -->|AI Cache Check| H
-F -->|Lock: SET NX EX| H
+F -->|Cache Messages (LPUSH / LRANGE)| H[Redis Cache]
+E -->|Load Cached Project| H
+F -->|AI Cache Check (GET)| H
+F -->|AI Lock (SET NX EX)| H
 
 %% ===== AI =====
-F -->|@ai prompt| I[Gemini AI Service]
-I -->|AI Generated Code/Text| F
+F -->|@ai Prompt| I[Gemini AI Service]
+I -->|Generated AI Response| F
 I -->|Store AI Result| H
-F -->|Emit ai-typing / ai-done| AA
+F -->|Emit ai-typing / ai-done| A
 
 ```
 
