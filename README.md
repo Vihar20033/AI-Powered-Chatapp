@@ -153,41 +153,30 @@ npm start
 
 ## 🧠 System Design Diagram
 
-## 🧠 System Design Diagram
-
 ```mermaid
 flowchart TD
+    Client[React Client]
+    Socket[Socket.IO Client]
+    Server[Node.js + Express Server]
+    Auth[JWT Auth Middleware]
+    Redis[Redis Cache]
+    Mongo[MongoDB]
+    Gemini[Google Gemini AI]
 
-%% ===== CLIENT LAYER =====
-A[React.js Client] -->|HTTP REST| B[Node.js + Express API]
-A -->|WebSocket| C[Socket.IO Client]
+    Client -->|HTTP API| Server
+    Client -->|WebSocket| Socket
+    Socket --> Server
 
-%% ===== SOCKET + AUTH =====
-C -->|socket.connect()| D[Socket.IO Server]
-D -->|JWT Verify| E[Socket Auth Middleware]
+    Server --> Auth
+    Auth --> Redis
+    Auth --> Mongo
 
-%% ===== PROJECT & CHAT LOGIC =====
-E --> F[Socket Handler]
-F -->|join-project| A
-F -->|project-message| A
-F -->|private-message| A
+    Server --> Redis
+    Server --> Mongo
 
-%% ===== DATABASE =====
-F -->|Save Projects & Messages| G[MongoDB]
-E -->|Load Project on First Access| G
-
-%% ===== REDIS CACHE =====
-F -->|Cache Messages (LPUSH / LRANGE)| H[Redis Cache]
-E -->|Load Cached Project| H
-F -->|AI Cache Check (GET)| H
-F -->|AI Lock (SET NX EX)| H
-
-%% ===== AI =====
-F -->|@ai Prompt| I[Gemini AI Service]
-I -->|Generated AI Response| F
-I -->|Store AI Result| H
-F -->|Emit ai-typing / ai-done| A
-
+    Server -->|AI Prompt| Gemini
+    Gemini -->|AI Response| Server
+    Server --> Client
 ```
 
 ---
