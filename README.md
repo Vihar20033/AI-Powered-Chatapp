@@ -153,6 +153,9 @@ npm start
 
 ## 🧠 System Design Diagram
 
+## 🧠 System Design Diagram
+
+```mermaid
 flowchart TD
 
 %% ===== CLIENT LAYER =====
@@ -182,6 +185,7 @@ I -->|Generated Code Text| F
 I -->|Store in Redis| H
 F -->|Emit ai-typing / ai-done| A
 
+```
 
 ---
 
