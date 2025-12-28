@@ -163,7 +163,7 @@ A[React.js Client] -->|HTTP Axios REST| B[Node.js + Express API]
 A -->|WebSocket| C[Socket.IO Client]
 
 %% ===== SOCKET + AUTH =====
-C -->|socket.connect()| D[Socket.IO Server]
+C -->|socket.connect| D[Socket.IO Server]
 D -->|JWT Verify| E[Socket Auth Middleware]
 
 %% ===== PROJECT & CHAT LOGIC =====
