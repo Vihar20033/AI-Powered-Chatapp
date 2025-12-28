@@ -3,6 +3,8 @@ import { body, param } from "express-validator";
 import * as projectController from "../controllers/project.controller.js";
 import { authUser } from "../middlewares/auth.middleware.js";
 
+
+
 const router = Router();
 
 /* ============================
@@ -61,5 +63,8 @@ router.get(
     .withMessage("Project ID is required"),
   projectController.getProjectByIdController
 );
+
+
+
 
 export default router;

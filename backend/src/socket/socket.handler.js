@@ -1,4 +1,3 @@
-// src/socket/socketHandler.js
 import mongoose from "mongoose";
 import crypto from "crypto";
 import redisClient from "../services/redis.services.js";
@@ -7,11 +6,9 @@ import { generateAIResponse } from "../ai/gemini.service.js";
 /* ================= CONFIG ================= */
 const MESSAGE_LIMIT = 100;
 const AI_TTL_SECONDS = 60 * 60; // 1 hour
-const AI_LOCK_TTL = 15; // seconds (prevent duplicate AI calls)
+const AI_LOCK_TTL = 15; // seconds
 
 /* ================= REDIS HELPERS ================= */
-
-// Hash prompt → stable redis key
 function getPromptKey(prompt) {
   const hash = crypto
     .createHash("sha256")
@@ -21,32 +18,33 @@ function getPromptKey(prompt) {
   return `ai:prompt:${hash}`;
 }
 
-// Lock key to avoid duplicate AI calls
 function getLockKey(prompt) {
   return `ai:lock:${getPromptKey(prompt)}`;
 }
 
-// Read cached AI response
 async function getAIFromCache(prompt) {
   return redisClient.get(getPromptKey(prompt));
 }
 
-// Save AI response with TTL
 async function saveAIToCache(prompt, response) {
-  await redisClient.set(getPromptKey(prompt), response, {
-    EX: AI_TTL_SECONDS,
-  });
+  await redisClient.set(
+    getPromptKey(prompt),
+    response,
+    "EX",
+    AI_TTL_SECONDS
+  );
 }
 
-// Acquire distributed lock (SET NX EX)
 async function acquireLock(prompt) {
-  return redisClient.set(getLockKey(prompt), "1", {
-    NX: true,
-    EX: AI_LOCK_TTL,
-  });
+  return redisClient.set(
+    getLockKey(prompt),
+    "1",
+    "NX",
+    "EX",
+    AI_LOCK_TTL
+  );
 }
 
-// Release lock
 async function releaseLock(prompt) {
   await redisClient.del(getLockKey(prompt));
 }
@@ -54,6 +52,7 @@ async function releaseLock(prompt) {
 /* ================= SOCKET HANDLER ================= */
 
 export function socketHandler(io) {
+
   io.on("connection", (socket) => {
     const userId = socket.user?.id;
 
@@ -62,10 +61,9 @@ export function socketHandler(io) {
       return;
     }
 
-    console.log("✅ Connected:", socket.id);
-
     /* ---------- JOIN PROJECT ---------- */
     socket.on("join-project", async ({ projectId }) => {
+      
       if (!mongoose.Types.ObjectId.isValid(projectId)) return;
 
       socket.join(projectId);
@@ -117,23 +115,14 @@ export function socketHandler(io) {
       socket.emit("ai-typing", { projectId });
 
       try {
-        /* ===== 1️⃣ CACHE CHECK ===== */
         let aiText = await getAIFromCache(prompt);
 
         if (!aiText) {
-          /* ===== 2️⃣ LOCK CHECK ===== */
           const lockAcquired = await acquireLock(prompt);
-
-          if (!lockAcquired) {
-            // Another request is generating the same AI response
-            return;
-          }
+          if (!lockAcquired) return;
 
           try {
-            /* ===== 3️⃣ CALL GEMINI ===== */
             aiText = await generateAIResponse(prompt);
-
-            /* ===== 4️⃣ SAVE TO CACHE ===== */
             await saveAIToCache(prompt, aiText);
           } finally {
             await releaseLock(prompt);
@@ -167,8 +156,6 @@ export function socketHandler(io) {
       }
     });
 
-    socket.on("disconnect", () => {
-      console.log("❌ Disconnected:", socket.id);
-    });
+    socket.on("disconnect", () => {});
   });
 }

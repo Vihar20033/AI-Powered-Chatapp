@@ -16,6 +16,7 @@ const Home = () => {
   /* ================= CREATE PROJECT ================= */
 
   const createProject = async (name) => {
+
     if (creating) return;
 
     try {
@@ -29,6 +30,7 @@ const Home = () => {
 
       setIsModalOpen(false);
       setProjectName("");
+
     } catch (error) {
       console.error("Error creating project:", error);
       alert("Failed to create project. Please try again.");
@@ -76,11 +78,18 @@ const Home = () => {
 
   /* ================= HELPERS ================= */
 
-  const getCollaboratorsCount = (project) =>
-    new Set(
-      (project.users || []).map((u) => u?._id || u?.id).filter(Boolean)
-    ).size;
+  const getCollaboratorsCount = (project) => {
+  const ids = [];
 
+  if (project.owner?._id || project.owner?.id)
+    ids.push(project.owner?._id ?? project.owner?.id);
+
+  (project.users || []).forEach((u) =>
+    ids.push(u?._id ?? u?.id)
+  );
+
+  return new Set(ids).size;
+};
   const formatDate = (dateString) => {
     if (!dateString) return "Recently";
     const date = new Date(dateString);

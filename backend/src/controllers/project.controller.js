@@ -2,7 +2,6 @@ import { createProject, getAllProjects, addUsersToProject, getProjectById } from
 import { validationResult } from "express-validator";
 import { User } from "../models/user.models.js";
 
-
 export const createProjectController = async (req, res) => {
 
     console.log("createProjectController called with body:", req.body);
@@ -116,3 +115,7 @@ export const getProjectByIdController = async (req, res) => {
         return res.status(400).json({ error: error.message });
     }
 };
+
+/**
+ * Remove User from Project Controller using RemoveUserFromProject service
+ */

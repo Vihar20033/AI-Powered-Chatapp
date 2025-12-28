@@ -1,4 +1,6 @@
-// socket/auth.middleware.js
+
+    
+    // socket/auth.middleware.js
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { Project } from "../models/project.models.js";
@@ -6,6 +8,7 @@ import redisClient from "../services/redis.services.js";
 
 export const socketAuthMiddleware = async (socket, next) => {
   try {
+    
     console.log("🔌 Socket handshake start:", {
       id: socket.id,
       query: socket.handshake.query,

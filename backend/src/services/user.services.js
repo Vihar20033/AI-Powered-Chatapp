@@ -11,8 +11,9 @@ const createUser = async ({ email, password }) => {
 };
 
 const getAllUsers = async ({userId}) => {
+
   const users = await User.find({
-    _id: { $ne: userId } // Exclude the requesting user
+     _id: { $ne: userId } // Exclude the requesting user
   }, '-password'); // Exclude password field
   return users;
 }

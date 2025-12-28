@@ -5,9 +5,10 @@ import { io } from "socket.io-client";
 import { UserContext } from "../context/UserContext";
 import Markdown from "markdown-to-jsx";
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:8000";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:8001";
 
 const Project = () => {
+
   const location = useLocation();
   const navigate = useNavigate();
   const projectId = location?.state?.projectId;
@@ -38,6 +39,7 @@ const Project = () => {
   const [codeStats, setCodeStats] = useState({ files: 0, lines: 0, chars: 0 });
 
   const socketRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
   const messageBoxRef = useRef(null);
 
   // Enhanced AI response parser - extracts code blocks automatically
@@ -178,6 +180,7 @@ const Project = () => {
   };
 
   useEffect(() => {
+
     const lastMessage = messages[messages.length - 1];
     if (
       lastMessage &&
@@ -308,7 +311,8 @@ const Project = () => {
     }
   };
 
-  function send() {
+  const send = () => {
+
     if (!user || (!user._id && !user.id)) {
       alert("Please log in again.");
       return;
@@ -427,9 +431,7 @@ const Project = () => {
       if (data.senderId === "ai" || data.senderEmail === "AI Assistant") {
         setIsAITyping(false);
       }
-
-      if (data?.projectId !== projectId) return;
-
+      if (data?.projectId !== projectId) return
       setMessages((prev) => {
         const isDuplicate = prev.some((m) => m.id === data.id);
         if (isDuplicate) return prev;
@@ -514,6 +516,7 @@ const Project = () => {
     const isOutgoing = String(m.senderId) === currentId;
     const isAI =
       String(m.senderId) === "ai" || m.senderEmail === "AI Assistant";
+      
     const isPrivate = m.isPrivate;
 
     return (

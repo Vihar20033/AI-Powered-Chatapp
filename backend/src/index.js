@@ -7,7 +7,7 @@ import connectDB from "./db/connectDB.js";
 import { socketAuthMiddleware } from "./middlewares/socketAuth.middleware.js";
 import { socketHandler } from "./socket/socket.handler.js";
 
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 8001;
 
 const httpServer = createServer(app);
 

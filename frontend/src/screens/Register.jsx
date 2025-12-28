@@ -18,12 +18,25 @@ const Register = () => {
 
   const validate = () => {
     const e = {}
-    if (!email) e.email = 'Email is required'
-    else if (!/^\S+@\S+\.\S+$/.test(email)) e.email = 'Enter a valid email'
-    if (!password) e.password = 'Password is required'
-    else if (password.length < 6) e.password = 'Password must be at least 6 characters'
-    if (!confirmPassword) e.confirmPassword = 'Please confirm your password'
-    else if (password !== confirmPassword) e.confirmPassword = 'Passwords do not match'
+
+    if (!email) 
+      e.email = 'Email is required'
+
+    else if (!/^\S+@\S+\.\S+$/.test(email)) 
+      e.email = 'Enter a valid email'
+
+    if (!password) 
+      e.password = 'Password is required'
+
+    else if (password.length < 6) 
+      e.password = 'Password must be at least 6 characters'
+
+    if (!confirmPassword) 
+      e.confirmPassword = 'Please confirm your password'
+
+    else if (password !== confirmPassword) 
+      e.confirmPassword = 'Passwords do not match'
+
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -35,7 +48,7 @@ const Register = () => {
     if (!validate()) return
     setLoading(true)
 
-    axios.post("/api/v1/register", { email, password })
+  axios.post("/api/v1/register", { email, password })
       .then(res => {
         console.log(res.data)
 

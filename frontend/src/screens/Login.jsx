@@ -4,6 +4,7 @@ import axios from '../config/axios'
 import { UserContext } from '../context/UserContext'
 
 const Login = () => {
+
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -17,8 +18,9 @@ const Login = () => {
     setApiError('') // ✅ Clear previous error
     setLoading(true)
 
-    axios.post('/api/v1/login', { email, password })
+  axios.post('/api/v1/login', { email, password })
       .then(res => {
+        
         console.log(res.data)
 
         localStorage.setItem('token', res.data.token)

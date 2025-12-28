@@ -1,6 +1,7 @@
 import { Project } from "../models/project.models.js";
 import mongoose from "mongoose";
 
+
 /**
  * Create a new project with a single user
  */
@@ -110,3 +111,4 @@ export const getProjectById = async (projectId) => {
         throw error;
     }
 };
+

@@ -35,7 +35,8 @@ import aiRoutes from './routes/gemini.routes.js'
 // Routes
 app.use('/api/v1', userRoutes);
 app.use('/api/v1/projects', projectRoutes);
-app.use('/api/v1/ai', aiRoutes)
+
+//app.use('/api/v1/ai', aiRoutes)
 
 
 export { app };
