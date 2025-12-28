@@ -164,26 +164,29 @@ A -->|WebSocket| C[Socket.IO Client]
 
 %% ===== SOCKET + AUTH =====
 C -->|socket.connect()| D[Socket.IO Server]
-D -->|Verify JWT| E[Socket Auth Middleware]
+D -->|JWT Verify| E[Socket Auth Middleware]
 
-%% ===== PROJECT / MESSAGE LOGIC =====
+%% ===== PROJECT & CHAT LOGIC =====
 E --> F[Socket Handler]
-F -->|join-project / private-message / project-message| A
+F -->|join-project| A
+F -->|project-message| A
+F -->|private-message| A
 
 %% ===== DATABASE =====
-F -->|Save Projects & Users| G[(MongoDB)]
-E -->|Load Project Cache| H[(Redis Cache)]
+F -->|Save Messages & Projects| G[(MongoDB)]
+E -->|Load Project on First Access| G
 
-%% ===== REDIS =====
-F -->|Cache Messages (lpush/lrange)| H
+%% ===== REDIS CACHE =====
+F -->|Cache Messages (lpush/lrange)| H[(Redis)]
+E -->|Load Project Cache| H
 F -->|AI Cache Check| H
-F -->|AI Lock (SET NX EX)| H
+F -->|Lock: SET NX EX| H
 
 %% ===== AI =====
-F -->|Prompt contains @ai| I[Gemini AI Service]
-I -->|Generated Code Text| F
-I -->|Store in Redis| H
-F -->|Emit ai-typing / ai-done| A
+F -->|@ai prompt| I[Gemini AI Service]
+I -->|AI Generated Code/Text| F
+I -->|Store AI Result| H
+F -->|Emit ai-typing / ai-done| AA
 
 ```
 
